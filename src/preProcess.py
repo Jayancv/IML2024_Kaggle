@@ -33,7 +33,7 @@ def preProcessDataset(train_data, test_data, target_column):
     # Identify numerical and categorical columns
     numerical_cols = X.select_dtypes(include=['float64', 'int64']).columns
     # categorical_cols = ['parentspecies']  # Update based on dataset
-    categorical_cols = [ ]  # Update based on dataset
+    categorical_cols = []  # Update based on dataset
 
     # Fill missing values for numerical columns with their mean
     X[numerical_cols] = X[numerical_cols].fillna(X[numerical_cols].mean())
@@ -65,13 +65,12 @@ def preProcessDataset(train_data, test_data, target_column):
     X_train_transformed_df = pd.DataFrame(X_train_transformed, columns=cleaned_column_names)
     test_data_transformed_df = pd.DataFrame(test_data_transformed, columns=cleaned_column_names)
 
-
-
     return X_train_transformed_df[features], y, test_data_transformed_df[features]
 
 
 def feature_selection(train_data, target_column):
     data = train_data
+    data1 = data.copy()
 
     # Correlation with target variable
     data_corr = data.select_dtypes(include=['float64', 'int64'])
@@ -80,13 +79,11 @@ def feature_selection(train_data, target_column):
     corr_selected_features = correlation_with_target[correlation_with_target.abs() >= 0.3].index
     print("Correlation : ")
     print(corr_selected_features)
-    """
 
-    data1 = data.copy()
     # Remove low-variance features
     selector = VarianceThreshold(threshold=0.2)
-    X1 = data1.drop(columns=['log_pSat_Pa'])
-    y1 = data1['log_pSat_Pa']
+    X1 = data1.drop(columns=[target_column])
+    y1 = data1[target_column]
     X1 = X1.select_dtypes(include=['float64', 'int64'])
 
     selector.fit(X1)
@@ -124,19 +121,14 @@ def feature_selection(train_data, target_column):
     # Sort features by occurrence
     sorted_features = sorted(feature_counts.items(), key=lambda x: -x[1])
     print("Feature Importance by Count:", sorted_features)
-    """
 
-    feature_importance = [('NumOfAtoms', 4), ('NumHBondDonors', 4), ('NumOfConf', 4), ('hydroxyl (alkyl)', 4),
-                          ('carboxylic acid', 3), ('MW', 3), ('NumOfC', 3), ('NumOfO', 3), ('NumOfConfUsed', 3),
-                          ('ketone', 3), ('carbonylperoxynitrate', 3), ('hydroperoxide', 2), ('aldehyde', 2),
-                          ('NumOfN', 1), ('nitrate', 1), ('peroxide', 1), ('carbonylperoxyacid', 1)]
+    feature_importance = sorted_features
 
     # Filter features with importance higher than 1
     important_features = [feature for feature, importance in feature_importance if importance > 1]
 
     print("Features with Importance Higher Than 1:")
     print(important_features)
-
 
     final_features = important_features
     return final_features
