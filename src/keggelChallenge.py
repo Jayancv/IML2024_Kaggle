@@ -1,8 +1,9 @@
 from datetime import datetime
 
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVR
+
 import preProcess
 
 target_column = 'log_pSat_Pa'
@@ -11,13 +12,19 @@ train_data = pd.read_csv('../resources/train.csv')
 test_data = pd.read_csv('../resources/test.csv')
 test_data1 = test_data.copy()
 
-X_train, y_train, X_test = preProcess.preProcessDataset(train_data, test_data, target_column)
+X_train, y_train, X_test = preProcess.preProcessDataset(train_data, test_data, target_column, False, True, False)
 
-model = RandomForestRegressor()
-model.fit(X_train, y_train)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-y_pred = model.predict(X_test)
-print(y_pred)
+# Define and train the SVR model with RBF kernel
+svr_rbf = SVR(kernel='rbf', C=1.0, epsilon=0.42, gamma='scale')
+svr_rbf.fit(X_train_scaled, y_train)
+
+# Predict on the test set
+y_pred = svr_rbf.predict(X_test_scaled)
+
 ols_submission = pd.DataFrame({
     'ID': test_data1['ID'],
     'TARGET': y_pred

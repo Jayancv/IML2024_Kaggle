@@ -14,7 +14,7 @@ train_data = pd.read_csv('../resources/train.csv')
 test_data = pd.read_csv('../resources/test.csv')
 
 
-def preProcessDataset(train_data, test_data, target_column):
+def preProcessDataset(train_data, test_data, target_column, normalize, feature_selection, feature_selection_run):
     # Drop unnecessary columns
     train_data.drop(columns=['ID'], inplace=True)
     test_data.drop(columns=['ID'], inplace=True)
@@ -24,51 +24,64 @@ def preProcessDataset(train_data, test_data, target_column):
     # Separate features and target variable
     X = train_data.drop(columns=[target_column])
     y = train_data[target_column]
+    if feature_selection_run:
+        features = feature_selections(data, target_column)
+    else:
+        # features = ['NumOfAtoms', 'NumHBondDonors', 'NumOfConf', 'hydroxyl (alkyl)', 'carboxylic acid', 'MW', 'NumOfC',
+        #             'NumOfO', 'NumOfConfUsed', 'ketone', 'carbonylperoxynitrate', 'hydroperoxide', 'aldehyde']
+        features = ['NumOfAtoms', 'NumHBondDonors', 'NumOfConf', 'hydroxyl (alkyl)', 'carboxylic acid', 'hydroperoxide', 'MW', 'NumOfC', 'NumOfO', 'NumOfConfUsed', 'aldehyde', 'ketone', 'carbonylperoxynitrate', 'ester', 'ether (alicyclic)', 'nitrate', 'peroxide', 'carbonylperoxyacid', 'NumOfN', 'nitro', 'C=C (non-aromatic)']
 
-    features = feature_selection(data, target_column)
     print(features)
-    X = X[features]
-    test_X = test_data[features]
+    if feature_selection:
+        X = X[features]
+        test_X = test_data[features]
+    else:
+        X = X
+        test_X = test_data
 
-    # Identify numerical and categorical columns
-    numerical_cols = X.select_dtypes(include=['float64', 'int64']).columns
-    # categorical_cols = ['parentspecies']  # Update based on dataset
-    categorical_cols = []  # Update based on dataset
+    if normalize:
+        # Identify numerical and categorical columns
+        numerical_cols = X.select_dtypes(include=['float64', 'int64']).columns
+        # categorical_cols = ['parentspecies']  # Update based on dataset
+        categorical_cols = []  # Update based on dataset
 
-    # Fill missing values for numerical columns with their mean
-    X[numerical_cols] = X[numerical_cols].fillna(X[numerical_cols].mean())
-    test_X[numerical_cols] = test_X[numerical_cols].fillna(test_data[numerical_cols].mean())
+        # Fill missing values for numerical columns with their mean
+        X[numerical_cols] = X[numerical_cols].fillna(X[numerical_cols].mean())
+        test_X[numerical_cols] = test_X[numerical_cols].fillna(test_data[numerical_cols].mean())
 
-    # Fill missing values for categorical columns with their mode (most frequent value)
-    for col in categorical_cols:
-        X[col] = X[col].fillna(X[col].mode()[0])
+        # Fill missing values for categorical columns with their mode (most frequent value)
+        for col in categorical_cols:
+            X[col] = X[col].fillna(X[col].mode()[0])
 
-    # Preprocessing pipeline
-    numerical_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+        # Preprocessing pipeline
+        numerical_transformer = StandardScaler()
+        categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numerical_transformer, numerical_cols),
-            ('cat', categorical_transformer, categorical_cols)
-        ])
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', numerical_transformer, numerical_cols),
+                ('cat', categorical_transformer, categorical_cols)
+            ])
 
-    # Apply preprocessing
-    pipeline = Pipeline(steps=[('preprocessor', preprocessor)])
-    data_transformed = pipeline.fit_transform(data)
-    X_train_transformed = pipeline.fit_transform(X)
-    test_data_transformed = pipeline.fit_transform(test_X)
+        # Apply preprocessing
+        pipeline = Pipeline(steps=[('preprocessor', preprocessor)])
+        data_transformed = pipeline.fit_transform(data)
+        X_train_transformed = pipeline.fit_transform(X)
+        test_data_transformed = pipeline.fit_transform(test_X)
 
-    transformed_column_names = preprocessor.get_feature_names_out()
-    cleaned_column_names = [name.replace('num__', '').replace('cat__', '') for name in transformed_column_names]
+        transformed_column_names = preprocessor.get_feature_names_out()
+        cleaned_column_names = [name.replace('num__', '').replace('cat__', '') for name in transformed_column_names]
 
-    X_train_transformed_df = pd.DataFrame(X_train_transformed, columns=cleaned_column_names)
-    test_data_transformed_df = pd.DataFrame(test_data_transformed, columns=cleaned_column_names)
+        X_train_transformed_df = pd.DataFrame(X_train_transformed, columns=cleaned_column_names)
+        test_data_transformed_df = pd.DataFrame(test_data_transformed, columns=cleaned_column_names)
+    else:
+        X_train_transformed_df = X
+        test_data_transformed_df = test_X
 
-    return X_train_transformed_df[features], y, test_data_transformed_df[features]
+    return X_train_transformed_df, y, test_data_transformed_df
 
 
-def feature_selection(train_data, target_column):
+def feature_selections(train_data, target_column):
     data = train_data
     data1 = data.copy()
 
@@ -81,7 +94,7 @@ def feature_selection(train_data, target_column):
     print(corr_selected_features)
 
     # Remove low-variance features
-    selector = VarianceThreshold(threshold=0.2)
+    selector = VarianceThreshold(threshold=0.1)
     X1 = data1.drop(columns=[target_column])
     y1 = data1[target_column]
     X1 = X1.select_dtypes(include=['float64', 'int64'])
@@ -92,7 +105,7 @@ def feature_selection(train_data, target_column):
     print(X_high_variance_col)
 
     model = RandomForestRegressor(random_state=42)
-    rfe = RFE(model, n_features_to_select=10)
+    rfe = RFE(model, n_features_to_select=12)
     X_rfe = rfe.fit_transform(X1, y1)
     rfe_selected_features = X1.columns[rfe.support_]
     print("Random RFE : ")
@@ -101,8 +114,9 @@ def feature_selection(train_data, target_column):
     model2 = RandomForestRegressor(random_state=42)
     model2.fit(X1, y1)
     importances = model2.feature_importances_
-    rfr_important_features = X1.columns[importances > 0.01]
+    rfr_important_features = X1.columns[importances > 0.005]
     print("Random forest : ")
+    print(importances)
     print(rfr_important_features)
 
     combined_list = list(
@@ -125,7 +139,7 @@ def feature_selection(train_data, target_column):
     feature_importance = sorted_features
 
     # Filter features with importance higher than 1
-    important_features = [feature for feature, importance in feature_importance if importance > 1]
+    important_features = [feature for feature, importance in feature_importance if importance > 0]
 
     print("Features with Importance Higher Than 1:")
     print(important_features)
