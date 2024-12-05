@@ -12,14 +12,14 @@ train_data = pd.read_csv('../resources/train.csv')
 test_data = pd.read_csv('../resources/test.csv')
 test_data1 = test_data.copy()
 
-X_train, y_train, X_test = preProcess.preProcessDataset(train_data, test_data, target_column, False, True, False)
+X_train, y_train, X_test = preProcess.preProcessDataset(train_data, test_data, target_column, True, True, False)
 
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
 # Define and train the SVR model with RBF kernel
-svr_rbf = SVR(kernel='rbf', C=1.0, epsilon=0.42, gamma='scale')
+svr_rbf = SVR(kernel='rbf', C=3, epsilon=0.45, gamma='auto')
 svr_rbf.fit(X_train_scaled, y_train)
 
 # Predict on the test set

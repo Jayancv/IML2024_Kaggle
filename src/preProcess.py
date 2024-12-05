@@ -1,10 +1,11 @@
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.feature_selection import RFE
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MultiLabelBinarizer
 from collections import Counter
 
 target_column = 'log_pSat_Pa'
@@ -12,6 +13,32 @@ target_column = 'log_pSat_Pa'
 # Load the data
 train_data = pd.read_csv('../resources/train.csv')
 test_data = pd.read_csv('../resources/test.csv')
+
+class MultiLabelEncoder(BaseEstimator, TransformerMixin):
+    def __init__(self, delimiter='_'):
+        self.mlb = None
+        self.delimiter = delimiter  # Define the delimiter
+
+    def fit(self, X, y=None):
+        if isinstance(X, pd.DataFrame):
+            X = X.iloc[:, 0]  # Ensure only the first column is used
+        X = X.fillna('')  # Replace NaN with an empty string
+        X = X.astype(str)  # Ensure all values are strings
+        X_split = X.str.split(self.delimiter)  # Split values into lists using the delimiter
+        self.mlb = MultiLabelBinarizer()
+        self.mlb.fit(X_split)
+        return self
+
+    def transform(self, X):
+        if isinstance(X, pd.DataFrame):
+            X = X.iloc[:, 0]  # Ensure only the first column is used
+        X = X.fillna('')  # Replace NaN with an empty string
+        X = X.astype(str)  # Ensure all values are strings
+        X_split = X.str.split(self.delimiter)
+        return self.mlb.transform(X_split)
+
+    def get_feature_names_out(self, input_features=None):
+        return self.mlb.classes_  # Return binary column names
 
 
 def preProcessDataset(train_data, test_data, target_column, normalize, feature_selection, feature_selection_run):
@@ -26,13 +53,16 @@ def preProcessDataset(train_data, test_data, target_column, normalize, feature_s
     y = train_data[target_column]
     if feature_selection_run:
         features = feature_selections(data, target_column)
+        features.append('parentspecies')
     else:
         # features = ['NumOfAtoms', 'NumHBondDonors', 'NumOfConf', 'hydroxyl (alkyl)', 'carboxylic acid', 'MW', 'NumOfC',
         #             'NumOfO', 'NumOfConfUsed', 'ketone', 'carbonylperoxynitrate', 'hydroperoxide', 'aldehyde']
         features = ['NumOfAtoms', 'NumHBondDonors', 'NumOfConf', 'hydroxyl (alkyl)', 'carboxylic acid', 'hydroperoxide', 'MW', 'NumOfC', 'NumOfO', 'NumOfConfUsed', 'aldehyde', 'ketone', 'carbonylperoxynitrate', 'ester', 'ether (alicyclic)', 'nitrate', 'peroxide', 'carbonylperoxyacid', 'NumOfN', 'nitro', 'C=C (non-aromatic)']
+        features.append('parentspecies')
 
-    print(features)
+
     if feature_selection:
+        print(features)
         X = X[features]
         test_X = test_data[features]
     else:
@@ -42,35 +72,43 @@ def preProcessDataset(train_data, test_data, target_column, normalize, feature_s
     if normalize:
         # Identify numerical and categorical columns
         numerical_cols = X.select_dtypes(include=['float64', 'int64']).columns
-        # categorical_cols = ['parentspecies']  # Update based on dataset
         categorical_cols = []  # Update based on dataset
+        multilabel_cols = ['parentspecies']
 
         # Fill missing values for numerical columns with their mean
         X[numerical_cols] = X[numerical_cols].fillna(X[numerical_cols].mean())
-        test_X[numerical_cols] = test_X[numerical_cols].fillna(test_data[numerical_cols].mean())
+        test_X[numerical_cols] = test_X[numerical_cols].fillna(test_X[numerical_cols].mean())
 
         # Fill missing values for categorical columns with their mode (most frequent value)
         for col in categorical_cols:
             X[col] = X[col].fillna(X[col].mode()[0])
+            test_X[col] = test_X[col].fillna(test_X[col].mode()[0])
 
         # Preprocessing pipeline
         numerical_transformer = StandardScaler()
         categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+        multilabel_transformer = Pipeline(steps=[('multilabel_encoder', MultiLabelEncoder())])
 
         preprocessor = ColumnTransformer(
             transformers=[
                 ('num', numerical_transformer, numerical_cols),
-                ('cat', categorical_transformer, categorical_cols)
+                ('cat', categorical_transformer, categorical_cols),
+                ('mult', multilabel_transformer, multilabel_cols)
             ])
 
         # Apply preprocessing
         pipeline = Pipeline(steps=[('preprocessor', preprocessor)])
-        data_transformed = pipeline.fit_transform(data)
         X_train_transformed = pipeline.fit_transform(X)
         test_data_transformed = pipeline.fit_transform(test_X)
 
         transformed_column_names = preprocessor.get_feature_names_out()
-        cleaned_column_names = [name.replace('num__', '').replace('cat__', '') for name in transformed_column_names]
+        print (X.shape)
+        print (test_X.shape)
+
+        print(X_train_transformed.shape)
+        print(test_data_transformed.shape)
+        print (transformed_column_names)
+        cleaned_column_names = [name.replace('num__', '').replace('cat__', '').replace('mult__', '') for name in transformed_column_names]
 
         X_train_transformed_df = pd.DataFrame(X_train_transformed, columns=cleaned_column_names)
         test_data_transformed_df = pd.DataFrame(test_data_transformed, columns=cleaned_column_names)
